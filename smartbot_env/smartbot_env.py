@@ -126,10 +126,8 @@ class SmartBotEnv(gym.Env):
     def calculateReward(self, gripperX, gripperY, gripperPhi):
         """ Calculates the reward for the current timestep, according to the gripper position and the pickup position. 
             A high reward is given if the gripper could grasp the box (pickup) if it would close the gripper. """
-        # TODO: Calculate reward based on current box position and chosen action
-        # return 42
 
-        # Calculate corner points of non-rotated gripper
+        # Calculate corner points of non-rotated gripper TODO: very similar to ObjectToPickUp class, maybe make a super class for this?
         leftX = gripperX - self.gripperDistance/2
         rightX = gripperX + self.gripperDistance/2
         topY = gripperY + self.gripperWidth/2
