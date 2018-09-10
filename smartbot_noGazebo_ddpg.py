@@ -107,9 +107,9 @@ def parse_args():
     boolean_flag(parser, 'restore', help="load a previously trained model", default=False)
 
     # training duration parameters
-    parser.add_argument('--nb-epochs', help="number of epochs aka episodes", type=int, default=10)
+    parser.add_argument('--nb-epochs', help="number of epochs aka episodes", type=int, default=100)
     parser.add_argument('--nb-epoch-cycles', help="number of cycles in an epoch", type=int, default=20)
-    parser.add_argument('--nb-rollout-steps', help="number of rollout steps per epoch cycle", type=int, default=50)  # per epoch cycle and MPI worker
+    parser.add_argument('--nb-rollout-steps', help="number of rollout steps per epoch cycle", type=int, default=100)  # per epoch cycle and MPI worker
     parser.add_argument('--num-timesteps', help="number of total timesteps (= nb_epochs * nb_epoch_cycles * nb_rollout_steps", type=int, default=None)
     
     # some neural network hyper-parameters

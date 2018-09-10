@@ -1,19 +1,14 @@
 import gym
 import time
 import numpy as np
-import os
-from os.path import expanduser
+import matplotlib.path as mplPath
+
 
 from gym import utils, spaces
 from gym.utils import seeding
 
 import sys
 import random
-from numpy import matrix
-from math import cos, sin
-from cv_bridge import CvBridge, CvBridgeError
-import cv2
-import psutil
 
 from objectToPickUp import ObjectToPickUp
 from kinect import Kinect
@@ -24,24 +19,18 @@ class SmartBotEnv(gym.Env):
 
     rewardSuccess = 500
     rewardFailure = 0
-    rewardUnreachablePosition = -5
+    rewardUnreachablePosition = -5 # TODO: do we need this anymore?
     # when set to True, the reward will be rewardSuccess if gripper could grasp the object, rewardFailure otherwise
     # when set to False, the reward will be calculated from the distance between the gripper & the position of success
-    binaryReward = False
+    binaryReward = True
     
     # some algorithms (like the ddpg from /home/joel/Documents/gym-gazebo/examples/pincher_arm/smartbot_pincher_kinect_ddpg.py)
     # currently assume that the observation_space has shape (x,) instead of (220,300), so for those algorithms set this to True
     flattenImage = True
-    
-    # how many times reset() has to be called in order to move the ObjectToPickUp to a new (random) position
-    randomPositionAtResetFrequency = 50
-    resetCount = 0
 
     state = np.array([])
-    imageCount = 0
-    home = expanduser("~")
-    imageWidth = 300
-    imageHeight = 220
+    imageWidth = 300 # TODO: tbd
+    imageHeight = 220 # TODO: tbd
     boxLength = 0.07
     boxWidth = 0.03
     boxHeight = 0.03
@@ -59,10 +48,9 @@ class SmartBotEnv(gym.Env):
         else:
             self.observation_space = spaces.Box(low=0, high=255, shape=[self.imageHeight,self.imageWidth], dtype=np.uint8)
 
-        # the action space are all possible positions & orientations (6-DOF),
-        # which are bounded in the area in front of the robot arm where an object can lie (see reset())
-        boundaries_xAxis = [0.04, 0.3]      # box position possiblities: (0.06, 0.22)
-        boundaries_yAxis = [-0.25, 0.25]    # box position possiblities: (-0.2, 0.2)
+        # TODO: maybe don't allow positions outside the radius of the gripper (i.e. unreachable positions)
+        boundaries_xAxis = [-self.gripperRadius, self.gripperRadius]
+        boundaries_yAxis = [0, self.gripperRadius]
         boundaries_phi = [0, np.pi]
 
         low = np.array([boundaries_xAxis[0], boundaries_yAxis[0], boundaries_phi[0]])
@@ -73,7 +61,9 @@ class SmartBotEnv(gym.Env):
         
         self.seed()
 
-        self.box = ObjectToPickUp(length = self.boxLength, width = self.boxWidth, height = self.boxHeight)
+        # create object for box (object to pick up)
+        self.box = ObjectToPickUp(length = self.boxLength, width = self.boxWidth, height = self.boxHeight, gripperRadius=self.gripperRadius)
+        # create object for kinect
         self.kinect = Kinect(self.imageWidth, self.imageHeight, x=0.0, y=0.0, z=1.0)
 
     # __init__
@@ -86,9 +76,11 @@ class SmartBotEnv(gym.Env):
 
     def reset(self):
         """ Resets the state of the environment and returns an initial observation."""
-        
-        print("reset")
+        # place box
         self.box.place(randomPlacement=True)
+
+        # for testing purposes
+        # self.box.place(randomPlacement=False, x=0.0, y=0.0, phi=0.0)
         
         # get depth image
         image = self.kinect.getImage(self.box, filter=False, flattenImage=self.flattenImage, saveImage=True)
@@ -107,15 +99,20 @@ class SmartBotEnv(gym.Env):
         """ Executes the action (i.e. moves the arm to the pose) and returns the reward and a new state (depth image). """
 
         # determine if gripper could grasp the ObjectToPickUp
-        reward = self.calculateReward(action)
+        gripperX = action[0].astype(np.float64)
+        gripperY = action[1].astype(np.float64)
+        gripperPhi = action[2].astype(np.float64)
 
+        # for testing purposes
+        # gripperX = self.boxLength/2
+        # gripperY = self.gripperDistance/2 - 0.01
+        # gripperPhi = np.pi/2
+
+        reward = self.calculateReward(gripperX, gripperY, gripperPhi)
+        print("received reward: " + str(reward))
+
+        # re-place object to pick up
         self.box.place(randomPlacement=True)
-        # print(self.box.pos)
-        # print(self.box.phi)
-        # print(self.box.a)
-        # print(self.box.b)
-        # print(self.box.c)
-        # print(self.box.d)
         # get depth image
         image = self.kinect.getImage(self.box, filter=False, flattenImage=self.flattenImage, saveImage=True)
 
@@ -126,101 +123,58 @@ class SmartBotEnv(gym.Env):
         return self.state, reward, done, info
     # step
 
-
-    def getUnitVectorsFromOrientation(self, quaternion):
-        """ Calculates the unit vectors (described in the /world coordinate system)
-            of an object, which orientation is given by the quaternion. """
-        explicit_quat = [quaternion.x, quaternion.y, quaternion.z, quaternion.w]
-        roll, pitch, yaw = tf.transformations.euler_from_quaternion(explicit_quat)
-
-        rot_mat = tf.transformations.euler_matrix(roll, pitch, yaw)
-        ex = np.dot(rot_mat, np.matrix([[1], [0], [0], [1]])) # e.g. [[0.800] [0.477] [-0.362] [1.]]
-        ex = ex[:3] / ex[3]
-
-        ey = np.dot(rot_mat, np.matrix([[0], [1], [0], [1]]))
-        ey = ey[:3] / ey[3]
-
-        ez = np.dot(rot_mat, np.matrix([[0], [0], [1], [1]]))
-        ez = ez[:3] / ez[3]
-        return ex, ey, ez
-    # getUnitVectorsFromOrientation
-
-    def calculateReward(self, action):
+    def calculateReward(self, gripperX, gripperY, gripperPhi):
         """ Calculates the reward for the current timestep, according to the gripper position and the pickup position. 
             A high reward is given if the gripper could grasp the box (pickup) if it would close the gripper. """
-        # TODO
-        return 42
+        # TODO: Calculate reward based on current box position and chosen action
+        # return 42
+
+        # Calculate corner points of non-rotated gripper
+        leftX = gripperX - self.gripperDistance/2
+        rightX = gripperX + self.gripperDistance/2
+        topY = gripperY + self.gripperWidth/2
+        bottomY = gripperY - self.gripperWidth/2
+        ag = np.array([leftX, topY])
+        bg = np.array([leftX, bottomY])
+        cg = np.array([rightX, bottomY])
+        dg = np.array([rightX, topY])
+
+        # Rotate corner points around point (position or gripper)
+        gripperPos = np.array([gripperX, gripperY])
+        cos, sin = np.cos(gripperPhi), np.sin(gripperPhi)
+        R = np.array([[cos, -sin], [sin, cos]])
+        ag = gripperPos + R.dot(ag - gripperPos)
+        bg = gripperPos + R.dot(bg - gripperPos)
+        cg = gripperPos + R.dot(cg - gripperPos)
+        dg = gripperPos + R.dot(dg - gripperPos)
+
+        # one finger is between ag & bg, the other finger is between cg & dg
+
+        # print("Current gripper position:")
+        # print("Position: {0}\nPhi: {1}\na: {2}\nb: {3}\nc: {4}\nd: {5}\n".format((gripperPos),
+        #     (gripperPhi), (ag), (bg), (cg), (dg)))
+
+        # print("Current box position:")
+        # print(self.box)
 
 
-        pickup_position_old = np.matrix([[pickup_pose_old.position.x],[pickup_pose_old.position.y],[pickup_pose_old.position.z]])
-        
-        pickup_position = np.matrix([[pickup_pose.position.x],[pickup_pose.position.y],[pickup_pose.position.z]])
-        # print("pickup_position:")
-        # print(pickup_position) # e.g. [[0.1], [0.0], [0.04]]
+        # check if center of gravity of box is between the gripper fingers (i.e. inside the ag-bg-cg-dg polygon)
+        # see e.g.: https://stackoverflow.com/a/23453678
+        bbPath_gripper = mplPath.Path(np.array([ag, bg, cg, dg]))
+        cogBetweenFingers = bbPath_gripper.contains_point((self.box.pos[0], self.box.pos[1]))
+        print("center of gravity is between the fingers: {}".format(cogBetweenFingers))
 
-        # check if the gripper has crashed into the ObjectToPickUp
-        tolerance = 0.005
-        if(pickup_position[0] < pickup_position_old[0] - tolerance or pickup_position[0] > pickup_position_old[0] + tolerance or
-            pickup_position[1] < pickup_position_old[1] - tolerance or pickup_position[1] > pickup_position_old[1] + tolerance or 
-            pickup_position[2] < pickup_position_old[2] - tolerance or pickup_position[2] > pickup_position_old[2] + tolerance):
-            pass
-            # print("********************************************* gripper crashed into the ObjectToPickUp! *********************************************")
-            # return self.rewardFailure
-        
-        # check if gripper is in the correct position in order to grasp the object
-        
-        # dimensions of the ObjectToPickUp & the gripper (see the corresponding sdf/urdf files)
-        pickup_xdim = 0.07
-        pickup_ydim = 0.02
-        pickup_zdim = 0.03
-        gripper_width = 0.032 # between the fingers
-        gripper_height = 0.035
+        # check if both gripper fingers don't intersect with the box
+        bbPath_box = mplPath.Path(np.array([self.box.a, self.box.b, self.box.c, self.box.d]))
+        bbPath_gripper_left = mplPath.Path(np.array([ag, bg]))
+        bbPath_gripper_right = mplPath.Path(np.array([cg, dg]))
+        leftGripperCrashes = bbPath_box.intersects_path(bbPath_gripper_left, filled=True)
+        rightGripperCrashes = bbPath_box.intersects_path(bbPath_gripper_right, filled=True)
+        print("left gripper crashes: {}".format(leftGripperCrashes))
+        print("right gripper crashes: {}".format(rightGripperCrashes))
 
-        # calculating the unit vectors (described in the /world coordinate system) of the objectToPickUp::link
-        ex, ey, ez = self.getUnitVectorsFromOrientation(pickup_pose.orientation)
-        
-        # corners of bounding box where gripper_right_position has to be
-        p1 = pickup_position + pickup_xdim/2 * ex + pickup_ydim/2 * ey
-        p2 = p1 - pickup_xdim * ex
-        p4 = p1 + ey * (pickup_ydim/2 + gripper_width - pickup_ydim)
-        p5 = p1 + ez * pickup_zdim
-        # print("corners of bounding box where gripper_right_position has to be:")
-        # print(p1) # e.g. [[0.135] [0.01 ] [0.04]]
-        # print(p2) # e.g. [[0.065] [0.01 ] [0.04]]
-        # print(p4) # e.g. [[0.135] [0.032] [0.04]]
-        # print(p5) # e.g. [[0.135] [0.01 ] [0.07]]
-
-        # the vectors of the bounding box where gripper_right_position has to be
-        # transpose is necessary because np.dot can't handle two (3,1) matrices, so one of them has to be a (1,3) matrix
-        u = np.transpose(p2 - p1) # e.g. [[ -7.00000000e-02  1.38777878e-17 -2.77555756e-17]]
-        v = np.transpose(p4 - p1)
-        w = np.transpose(p5 - p1)
-
-        # corners of bounding box where gripper_left_position has to be
-        p1_left = pickup_position + pickup_xdim/2 * ex - pickup_ydim/2 * ey
-        p2_left = p1_left - pickup_xdim * ex
-        p4_left = p1_left - ey * (pickup_ydim/2 + gripper_width - pickup_ydim)
-        p5_left = p1_left + ez * pickup_zdim
-        # print("corners of bounding box where gripper_left_position has to be:")
-        # print(p1_left) # e.g. [[0.135] [-0.01 ] [0.04]]
-        # print(p2_left) # e.g. [[0.065] [-0.01 ] [0.04]]
-        # print(p4_left) # e.g. [[0.135] [-0.032] [0.04]]
-        # print(p5_left) # e.g. [[0.135] [-0.01 ] [0.07]]
-
-        # the vectors of the bounding box where gripper_left_position has to be
-        u_left = np.transpose(p2_left - p1_left)
-        v_left = np.transpose(p4_left - p1_left)
-        w_left = np.transpose(p5_left - p1_left)
-
-        graspSuccess = False
-        # check if right gripper is on the right and left gripper is on the left of the ObjectToPickUp
-        gripperRightIsRight = self.isPositionInCuboid(gripper_right_position, p1, p2, p4, p5, u, v, w)
-        gripperLeftIsLeft = self.isPositionInCuboid(gripper_left_position, p1_left, p2_left, p4_left, p5_left, u_left, v_left, w_left)
-        # check if right gripper is on the left and left gripper is on the right of the ObjectToPickUp
-        gripperLeftIsRight = self.isPositionInCuboid(gripper_left_position, p1, p2, p4, p5, u, v, w)
-        gripperRightIsLeft = self.isPositionInCuboid(gripper_right_position, p1_left, p2_left, p4_left, p5_left, u_left, v_left, w_left)
-        # if one of the two scenarios is true, the grasping would be successful
-        if((gripperRightIsRight and gripperLeftIsLeft) or (gripperLeftIsRight and gripperRightIsLeft)):
+        # if the center of gravity of the box is between the gripper fingers and none of the fingers collide with the box, we are able to grasp the box
+        if(cogBetweenFingers and not leftGripperCrashes and not rightGripperCrashes):
             print("********************************************* grasping would be successful! *********************************************")
             graspSuccess = True
         else:
@@ -232,17 +186,13 @@ class SmartBotEnv(gym.Env):
             else:
                 return self.rewardFailure
         else:
-            # calculate reward according to the distance from the gripper to the middle of the bounding box
-            # pM = middle of the box where gripper_right_position has to be
-            pM = p1 + 0.5 * np.transpose(u) + 0.5 * np.transpose(v) + 0.5 * np.transpose(w) # e.g. matrix([[0.1],[0.021],[0.055]])
-            distance = np.linalg.norm(pM - gripper_right_position) # e.g. 0.1375784482561938
+            # calculate reward according to the distance from the gripper to the center of gravity of the box
+            distance = np.linalg.norm(gripperPos - self.box.pos) # e.g. 0.025
             # invert the distance, because smaller distance == closer to the goal == more reward
-            reward = 1.0 / distance # e.g. 7.2685803094525
-            # scale the reward if gripper is in the bounding box
-            # (if gripper_right_position is exaclty at an edge of bounding box (e.g. p1), unscaled reward would be approx 25.2)
+            reward = 1.0 / distance # e.g. 40
+            # scale the reward if grasping would be successful
             if(graspSuccess):
                 reward = 5 * reward
-            # print("received reward: " + str(reward))
             return reward
         # if
     # calculateReward

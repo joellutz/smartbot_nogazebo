@@ -11,6 +11,12 @@
             "program": "${file}"
         },
         {
+            "name": "Python: DDPG NoGazebo",
+            "type": "python",
+            "request": "launch",
+            "program": "/home/joel/Documents/noGazeboAttempt/smartbot_noGazebo_ddpg.py"
+        },
+        {
             "name": "Python: Attach",
             "type": "python",
             "request": "attach",

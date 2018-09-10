@@ -1,6 +1,7 @@
 import numpy as np
 import os
 from os.path import expanduser
+import cv2
 
 class Kinect():
     def __init__(self, width, height, x=0.0, y=0.0, z=0.0 ):
@@ -17,8 +18,8 @@ class Kinect():
     def getImage(self, box, filter=False, flattenImage=False, saveImage=False, saveToFile=False):
         """ Reads the depth image from the kinect camera, adds Gaussian noise, crops, normalizes and saves it. """
         folder = self.home + "/Pictures/"
-        # TODO
-        return np.empty([self.width*self.height])
+        # TODO: create depth image according to current box position
+        return np.ones([self.width*self.height])
 
 
         # normalizing image
