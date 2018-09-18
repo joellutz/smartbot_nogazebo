@@ -19,11 +19,17 @@ import gym
 import smartbot_env
 import tensorflow as tf
 from mpi4py import MPI
-
+import logging
+import datetime
 import subprocess
 
 def run(env_id, seed, noise_type, layer_norm, evaluation, **kwargs):
-    print("********************************************* Starting RL algorithm *********************************************")
+    logging.basicConfig(filename='noGazebo_ddpg.log', level=logging.DEBUG, filemode="w")
+    logging.getLogger().addHandler(logging.StreamHandler())
+
+    logging.info("********************************************* Starting RL algorithm *********************************************")
+    now = datetime.datetime.now()
+    logging.info(now.isoformat())
     # Configure logger for the process with rank 0 (main-process?)
     # MPI = Message Passing Interface, for parallel computing; rank = process identifier within a group of processes
     rank = MPI.COMM_WORLD.Get_rank()
@@ -33,7 +39,7 @@ def run(env_id, seed, noise_type, layer_norm, evaluation, **kwargs):
 
     # Create envs.
     env = gym.make(env_id)
-    env = bench.Monitor(env, logger.get_dir() and os.path.join(logger.get_dir(), str(rank)))
+    env = bench.Monitor(env, logger.get_dir() and os.path.join(logger.get_dir(), str(rank)), allow_early_resets=True)
 
     if evaluation and rank==0:
         eval_env = gym.make(env_id)
@@ -63,8 +69,8 @@ def run(env_id, seed, noise_type, layer_norm, evaluation, **kwargs):
             raise RuntimeError('unknown noise type "{}"'.format(current_noise_type))
 
     # Configure components. (initialize memory, critic & actor objects)
-    print(env.action_space) # Box(3,)
-    print(env.observation_space) # Box(66000,)
+    logging.info(env.action_space) # Box(3,)
+    logging.info(env.observation_space) # Box(51200,)
     memory = Memory(limit=int(1e3), action_shape=(env.action_space.shape[0],), observation_shape=env.observation_space.shape)
     critic = Critic(layer_norm=layer_norm)
     actor = Actor(nb_actions, layer_norm=layer_norm)
@@ -107,10 +113,10 @@ def parse_args():
     boolean_flag(parser, 'restore', help="load a previously trained model", default=False)
 
     # training duration parameters
-    parser.add_argument('--nb-epochs', help="number of epochs aka episodes", type=int, default=100)
+    parser.add_argument('--nb-epochs', help="number of epochs aka episodes", type=int, default=10)
     parser.add_argument('--nb-epoch-cycles', help="number of cycles in an epoch", type=int, default=20)
     parser.add_argument('--nb-rollout-steps', help="number of rollout steps per epoch cycle", type=int, default=100)  # per epoch cycle and MPI worker
-    parser.add_argument('--num-timesteps', help="number of total timesteps (= nb_epochs * nb_epoch_cycles * nb_rollout_steps", type=int, default=None)
+    parser.add_argument('--num-timesteps', help="number of total timesteps (= nb_epochs * nb_epoch_cycles * nb_rollout_steps)", type=int, default=None)
     
     # some neural network hyper-parameters
     boolean_flag(parser, 'layer-norm', help="use layer normalization", default=True)
@@ -152,16 +158,5 @@ if __name__ == '__main__':
     #     logger.configure()
     # Run actual script.
     algorithmDone = False
-    # while(not algorithmDone):
-    #     try:
     algorithmDome = run(**args)
-        # except Exception as e:
-        #     print("an exception occured during training")
-        #     print(e)
-        #     cmd = "killall -9 rosout roslaunch rosmaster gzserver nodelet robot_state_publisher gzclient" # aka killgazebogym
-        #     result = subprocess.call(cmd, shell=True)
-        #     print(result)
-        #     time.sleep(10)
-        #     break
-    # while
 # if __main___

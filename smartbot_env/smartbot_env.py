@@ -12,6 +12,7 @@ import random
 
 from objectToPickUp import ObjectToPickUp
 from kinect import Kinect
+import logging
 
 
 
@@ -29,8 +30,8 @@ class SmartBotEnv(gym.Env):
     flattenImage = True
 
     state = np.array([])
-    imageWidth = 300 # TODO: tbd
-    imageHeight = 220 # TODO: tbd
+    imageWidth = 320 # TODO: tbd
+    imageHeight = 160 # TODO: tbd
     boxLength = 0.07
     boxWidth = 0.03
     boxHeight = 0.03
@@ -48,7 +49,7 @@ class SmartBotEnv(gym.Env):
         else:
             self.observation_space = spaces.Box(low=0, high=255, shape=[self.imageHeight,self.imageWidth], dtype=np.uint8)
 
-        # TODO: maybe don't allow positions outside the radius of the gripper (i.e. unreachable positions)
+        # TODO: maybe don't allow positions outside the radius of the gripper (i.e. unreachable positions) --> how?
         boundaries_xAxis = [-self.gripperRadius, self.gripperRadius]
         boundaries_yAxis = [0, self.gripperRadius]
         boundaries_phi = [0, np.pi]
@@ -91,7 +92,7 @@ class SmartBotEnv(gym.Env):
 
     def close(self):
         """ Closes the environment and shuts down the simulation. """
-        print("closing SmartBotEnv")
+        logging.info("closing SmartBotEnv")
         super(gym.Env, self).close()
     # close
 
@@ -108,8 +109,11 @@ class SmartBotEnv(gym.Env):
         # gripperY = self.gripperDistance/2 - 0.01
         # gripperPhi = np.pi/2
 
+        np.set_printoptions(precision=3)
+        logging.debug("moving arm to position: " + str(action))
+
         reward = self.calculateReward(gripperX, gripperY, gripperPhi)
-        print("received reward: " + str(reward))
+        logging.debug("received reward: " + str(reward))
 
         # re-place object to pick up
         self.box.place(randomPlacement=True)
@@ -148,19 +152,19 @@ class SmartBotEnv(gym.Env):
 
         # one finger is between ag & bg, the other finger is between cg & dg
 
-        # print("Current gripper position:")
-        # print("Position: {0}\nPhi: {1}\na: {2}\nb: {3}\nc: {4}\nd: {5}\n".format((gripperPos),
+        # logging.debug("Current gripper position:")
+        # logging.debug("Position: {0}\nPhi: {1}\na: {2}\nb: {3}\nc: {4}\nd: {5}\n".format((gripperPos),
         #     (gripperPhi), (ag), (bg), (cg), (dg)))
 
-        # print("Current box position:")
-        # print(self.box)
+        # logging.debug("Current box position:")
+        # logging.debug(self.box)
 
 
         # check if center of gravity of box is between the gripper fingers (i.e. inside the ag-bg-cg-dg polygon)
         # see e.g.: https://stackoverflow.com/a/23453678
         bbPath_gripper = mplPath.Path(np.array([ag, bg, cg, dg]))
         cogBetweenFingers = bbPath_gripper.contains_point((self.box.pos[0], self.box.pos[1]))
-        print("center of gravity is between the fingers: {}".format(cogBetweenFingers))
+        logging.debug("center of gravity is between the fingers: {}".format(cogBetweenFingers))
 
         # check if both gripper fingers don't intersect with the box
         bbPath_box = mplPath.Path(np.array([self.box.a, self.box.b, self.box.c, self.box.d]))
@@ -168,12 +172,12 @@ class SmartBotEnv(gym.Env):
         bbPath_gripper_right = mplPath.Path(np.array([cg, dg]))
         leftGripperCrashes = bbPath_box.intersects_path(bbPath_gripper_left, filled=True)
         rightGripperCrashes = bbPath_box.intersects_path(bbPath_gripper_right, filled=True)
-        print("left gripper crashes: {}".format(leftGripperCrashes))
-        print("right gripper crashes: {}".format(rightGripperCrashes))
+        logging.debug("left gripper crashes: {}".format(leftGripperCrashes))
+        logging.debug("right gripper crashes: {}".format(rightGripperCrashes))
 
         # if the center of gravity of the box is between the gripper fingers and none of the fingers collide with the box, we are able to grasp the box
         if(cogBetweenFingers and not leftGripperCrashes and not rightGripperCrashes):
-            print("********************************************* grasping would be successful! *********************************************")
+            logging.info("********************************************* grasping would be successful! *********************************************")
             graspSuccess = True
         else:
             graspSuccess = False
@@ -194,18 +198,5 @@ class SmartBotEnv(gym.Env):
             return reward
         # if
     # calculateReward
-
-    def isPositionInCuboid(self, gripper_position, p1, p2, p4, p5, u, v, w):
-        """ Checks if gripper_position is in the correct location (i.e. within the cuboid described by u, v & w). """
-        # (see https://math.stackexchange.com/questions/1472049/check-if-a-point-is-inside-a-rectangular-shaped-area-3d)
-        if(np.dot(u, gripper_position) > np.dot(u, p1) and np.dot(u, gripper_position) < np.dot(u, p2)):
-            # print("gripper is in correct position (x-axis)")
-            if(np.dot(v, gripper_position) > np.dot(v, p1) and np.dot(v, gripper_position) < np.dot(v, p4)):
-                # print("gripper is in correct position (y-axis)")
-                if(np.dot(w, gripper_position) > np.dot(w, p1) and np.dot(w, gripper_position) < np.dot(w, p5)):
-                    # print("gripper is in correct position (z-axis)")
-                    return True
-        return False
-    # isPositionInCuboid
 
 # class SmartBotEnv

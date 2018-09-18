@@ -1,5 +1,6 @@
 import numpy as np
 import random
+import logging
 
 class ObjectToPickUp():
     def __init__(self, length, width, height, x=0.0, y=0.0, phi=0.0, gripperRadius=0.2):
@@ -14,13 +15,13 @@ class ObjectToPickUp():
 
     def place(self, randomPlacement=True, x=0.0, y=0.0, phi=0.0):
         if(randomPlacement):
-            # print("setting random position of object to pick up")
+            # logging.info("setting random position of object to pick up")
             # TODO: maybe don't allow positions outside the radius of the gripper
             x = random.uniform(-self.gripperRadius, self.gripperRadius)
             y = random.uniform(0, self.gripperRadius)
             self.phi = random.uniform(0, np.pi)
         else:
-            # print("setting non-random position of object to pick up")
+            # logging.info("setting non-random position of object to pick up")
             self.phi = phi
         self.pos = np.array([x, y])
         self.a, self.b, self.c, self.d = self.calculateCornerPoints()

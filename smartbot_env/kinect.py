@@ -2,6 +2,10 @@ import numpy as np
 import os
 from os.path import expanduser
 import cv2
+import matplotlib.pyplot as plt
+import matplotlib.patches as patches
+import matplotlib
+import logging
 
 class Kinect():
     def __init__(self, width, height, x=0.0, y=0.0, z=0.0 ):
@@ -15,42 +19,74 @@ class Kinect():
         self.home = expanduser("~")
     # __init__
 
-    def getImage(self, box, filter=False, flattenImage=False, saveImage=False, saveToFile=False):
-        """ Reads the depth image from the kinect camera, adds Gaussian noise, crops, normalizes and saves it. """
-        folder = self.home + "/Pictures/"
-        # TODO: create depth image according to current box position
-        return np.ones([self.width*self.height])
+    def getImage(self, box, filter=False, flattenImage=False, saveImage=False, saveToFile=False, folder="/Pictures/"):
+        """ Reads the depth image from the (pseudo) kinect camera. """
+        # TODO: change image based on camera location (x,y,z), add filter, better image sizing capabilities (height & width)
 
+        fig, ax = plt.subplots(frameon=False, figsize=(8,4), dpi=self.width/8)
+        # pixels = size_inches * dpi
+        # logging.info(fig.get_size_inches())
+        # logging.info(fig.dpi)
+        
+        axes = plt.gca()
+        axes.set_xlim([-box.gripperRadius - box.length, box.gripperRadius + box.length])
+        axes.set_ylim([0 - box.length, box.gripperRadius + box.length])
+        axes.set_aspect('equal', adjustable='box')
+        fig.tight_layout(pad=0)
+        ax.set_axis_off()
 
-        # normalizing image
-        cv2.normalize(image, image, 0, 255, cv2.NORM_MINMAX)
-        # adding noise to simulated depth image
-        image = image + np.random.normal(0.0, 10.0, image.shape)
-        # round to integer values and don't allow values <0 or >255 (necessary because of the added noise)
-        image = np.clip(np.round(image), 0, 255).astype(np.uint8)
-        if(setRandomPixelsToZero):
-            # set approx. 5% of all pixels to zero
-            mask = (np.random.uniform(0,1,size=image.shape) > 0.95).astype(np.bool)
-            image[mask] = 0
+        rect = patches.Polygon([box.a, box.b, box.c, box.d], closed=True, color="black")
+        ax.add_patch(rect)
+        
+        # plt.ion()
+        # plt.show()
+
+        # If we haven't already shown or saved the plot, then we need to
+        # draw the figure first...
+        fig.canvas.draw()
+
+        # Now we can save it to a numpy array.
+        image = np.fromstring(fig.canvas.tostring_rgb(), dtype=np.uint8)
+        # logging.info(image.shape) # e.g. (153600,)
+        image = image.reshape(fig.canvas.get_width_height()[::-1] + (3,))
+        # logging.info(image.shape) # e.g. (160, 320, 3)
+        image = self.rgb2gray(image)
+        # logging.info(image.shape) # (160, 320)
+
+        # # Save as png (not possible before converting it to a numpy array, as then reshaping wouldn't work!)
+        # plt.savefig("testfig")
+
+        plt.close('all')
+
+        # # adding noise to simulated depth image
+        # image = image + np.random.normal(0.0, 10.0, image.shape)
+        # # round to integer values and don't allow values <0 or >255 (necessary because of the added noise)
+        # image = np.clip(np.round(image), 0, 255).astype(np.uint8)
+
         if(saveImage):
+            folder = self.home + folder
             # saving depth image
             if(saveToFile):
                 np.set_printoptions(threshold="nan")
                 f = open(folder + "depth_image_sim_" + str(self.imageCount) + ".txt", "w")
                 print >>f, image
                 f.close()
-                # print("depth image saved as file")
+                # logging.info("depth image saved as file")
             pathToImage = folder + "depth_image_sim_" + str(self.imageCount) + ".jpg"
             self.imageCount += 1
             try:
                 cv2.imwrite(pathToImage, image)
-                # print("depth image saved as jpg")
+                # logging.info("depth image saved as jpg")
             except Exception as e:
-                print(e)
+                logging.info(e)
         if(flattenImage):
             return image.flatten()
         else:
             return image
     # getImage
+
+    def rgb2gray(self, rgb):
+        return np.dot(rgb[...,:3], [0.299, 0.587, 0.114])
+    # rgb2gray
 
 # class Kinect
