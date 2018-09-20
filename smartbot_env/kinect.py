@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 import matplotlib
 import logging
+from scipy.signal import medfilt2d
 
 class Kinect():
     def __init__(self, width, height, x=0.0, y=0.0, z=0.0 ):
@@ -23,15 +24,15 @@ class Kinect():
         """ Reads the depth image from the (pseudo) kinect camera. """
         # TODO: change image based on camera location (x,y,z), add filter, better image sizing capabilities (height & width)
 
+        plt.ioff()
         fig, ax = plt.subplots(frameon=False, figsize=(8,4), dpi=self.width/8)
         # pixels = size_inches * dpi
         # logging.info(fig.get_size_inches())
         # logging.info(fig.dpi)
         
-        axes = plt.gca()
-        axes.set_xlim([-box.gripperRadius - box.length, box.gripperRadius + box.length])
-        axes.set_ylim([0 - box.length, box.gripperRadius + box.length])
-        axes.set_aspect('equal', adjustable='box')
+        ax.axes.set_xlim([-box.gripperRadius - box.length, box.gripperRadius + box.length])
+        ax.axes.set_ylim([0 - box.length, box.gripperRadius + box.length])
+        ax.axes.set_aspect('equal', adjustable='box')
         fig.tight_layout(pad=0)
         ax.set_axis_off()
 
@@ -56,14 +57,17 @@ class Kinect():
         # # Save as png (not possible before converting it to a numpy array, as then reshaping wouldn't work!)
         # plt.savefig("testfig")
 
-        plt.close('all')
+        plt.close(fig)
 
-        # # adding noise to simulated depth image
-        # image = image + np.random.normal(0.0, 10.0, image.shape)
+        # adding noise to simulated depth image
+        image = image + np.random.normal(0.0, 10.0, image.shape)
+        image = medfilt2d(image, kernel_size=5)
+
         # # round to integer values and don't allow values <0 or >255 (necessary because of the added noise)
         # image = np.clip(np.round(image), 0, 255).astype(np.uint8)
+        self.imageCount += 1
 
-        if(saveImage):
+        if(saveImage and self.imageCount % 100 == 0):
             folder = self.home + folder
             # saving depth image
             if(saveToFile):
@@ -73,7 +77,6 @@ class Kinect():
                 f.close()
                 # logging.info("depth image saved as file")
             pathToImage = folder + "depth_image_sim_" + str(self.imageCount) + ".jpg"
-            self.imageCount += 1
             try:
                 cv2.imwrite(pathToImage, image)
                 # logging.info("depth image saved as jpg")

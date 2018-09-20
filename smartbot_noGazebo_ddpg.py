@@ -36,6 +36,7 @@ def run(env_id, seed, noise_type, layer_norm, evaluation, **kwargs):
     if rank != 0:
         # Disable logging for rank != 0 to avoid noise.
         logger.set_level(logger.DISABLED)
+        logging.disable(logging.CRITICAL)
 
     # Create envs.
     env = gym.make(env_id)
@@ -69,9 +70,9 @@ def run(env_id, seed, noise_type, layer_norm, evaluation, **kwargs):
             raise RuntimeError('unknown noise type "{}"'.format(current_noise_type))
 
     # Configure components. (initialize memory, critic & actor objects)
-    logging.info(env.action_space) # Box(3,)
+    logging.info(env.action_space) # Box(2,)
     logging.info(env.observation_space) # Box(51200,)
-    memory = Memory(limit=int(1e3), action_shape=(env.action_space.shape[0],), observation_shape=env.observation_space.shape)
+    memory = Memory(limit=int(1e4), action_shape=(env.action_space.shape[0],), observation_shape=env.observation_space.shape)
     critic = Critic(layer_norm=layer_norm)
     actor = Actor(nb_actions, layer_norm=layer_norm)
 
@@ -97,6 +98,9 @@ def run(env_id, seed, noise_type, layer_norm, evaluation, **kwargs):
     if rank == 0:
         logger.info('total runtime: {}s'.format(time.time() - start_time))
 
+    now = datetime.datetime.now()
+    logging.info(now.isoformat())
+    logging.info("********************************************* End of RL algorithm *********************************************")
     return True
 # run
 
@@ -127,7 +131,7 @@ def parse_args():
     parser.add_argument('--nb-train-steps', help="number of model-fitting steps per epoch cycle", type=int, default=50)  # per epoch cycle and MPI worker
 
     # graphical parameters
-    boolean_flag(parser, 'render', help="display simulation", default=False)
+    boolean_flag(parser, 'render', help="display simulation", default=True)
 
     # various parameters
     parser.add_argument('--clip-norm', type=float, default=None)
