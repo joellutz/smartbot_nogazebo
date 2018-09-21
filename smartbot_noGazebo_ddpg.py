@@ -27,17 +27,19 @@ def run(env_id, seed, noise_type, layer_norm, evaluation, **kwargs):
     logging.basicConfig(filename='noGazebo_ddpg.log', level=logging.DEBUG, filemode="w")
     logging.getLogger().addHandler(logging.StreamHandler())
 
-    logging.info("********************************************* Starting RL algorithm *********************************************")
-    now = datetime.datetime.now()
-    logging.info(now.isoformat())
     # Configure logger for the process with rank 0 (main-process?)
     # MPI = Message Passing Interface, for parallel computing; rank = process identifier within a group of processes
     rank = MPI.COMM_WORLD.Get_rank()
     if rank != 0:
         # Disable logging for rank != 0 to avoid noise.
+        logging.debug("I'm MPI worker {} and I guess I just log nothing".format(rank))
         logger.set_level(logger.DISABLED)
         logging.disable(logging.CRITICAL)
 
+    logging.info("********************************************* Starting RL algorithm *********************************************")
+    now = datetime.datetime.now()
+    logging.info(now.isoformat())
+    
     # Create envs.
     env = gym.make(env_id)
     env = bench.Monitor(env, logger.get_dir() and os.path.join(logger.get_dir(), str(rank)), allow_early_resets=True)
@@ -70,8 +72,8 @@ def run(env_id, seed, noise_type, layer_norm, evaluation, **kwargs):
             raise RuntimeError('unknown noise type "{}"'.format(current_noise_type))
 
     # Configure components. (initialize memory, critic & actor objects)
-    logging.info(env.action_space) # Box(2,)
-    logging.info(env.observation_space) # Box(51200,)
+    logging.info("action space of env: {}".format(env.action_space)) # Box(2,)
+    logging.info("observation space of env: {}".format(env.observation_space)) # Box(51200,)
     memory = Memory(limit=int(1e4), action_shape=(env.action_space.shape[0],), observation_shape=env.observation_space.shape)
     critic = Critic(layer_norm=layer_norm)
     actor = Actor(nb_actions, layer_norm=layer_norm)
@@ -86,8 +88,7 @@ def run(env_id, seed, noise_type, layer_norm, evaluation, **kwargs):
         eval_env.seed(seed)
 
     # Train the RL algorithm
-    if rank == 0:
-        start_time = time.time()
+    start_time = time.time()
     training.train(env=env, eval_env=eval_env, param_noise=param_noise,
         action_noise=action_noise, actor=actor, critic=critic, memory=memory, **kwargs)
     
@@ -95,8 +96,8 @@ def run(env_id, seed, noise_type, layer_norm, evaluation, **kwargs):
     env.close()
     if eval_env is not None:
         eval_env.close()
-    if rank == 0:
-        logger.info('total runtime: {}s'.format(time.time() - start_time))
+
+    logger.info('total runtime: {}s'.format(time.time() - start_time))
 
     now = datetime.datetime.now()
     logging.info(now.isoformat())

@@ -84,7 +84,7 @@ class SmartBotEnv(gym.Env):
         self.box.place(randomPlacement=True)
 
         # for testing purposes
-        self.box.place(randomPlacement=False, x=0.0, y=0.1, phi=np.pi/2)
+        # self.box.place(randomPlacement=False, x=0.0, y=0.1, phi=np.pi/2)
         
         # get depth image
         image = self.kinect.getImage(self.box, filter=False, flattenImage=self.flattenImage, saveImage=True)
@@ -117,20 +117,20 @@ class SmartBotEnv(gym.Env):
         self.gripper.place(gripperR, gripperPhi)
 
         logging.debug("moving arm to position: [{0} {1}]".format(gripperR, gripperPhi))
-        # logging.debug("box position: {0}, {1}, {2}".format(self.box.pos[0], self.box.pos[1], self.box.phi))
+        logging.debug("box position: [{0} {1} {2}]".format(self.box.pos[0], self.box.pos[1], self.box.phi))
 
         reward, graspSuccess = self.calculateReward()
         logging.debug("received reward: " + str(reward))
 
         # re-place object to pick up if grasp was successful
         # if(graspSuccess):
-        #     self.box.place(randomPlacement=True)
-        
+        self.box.place(randomPlacement=True)
+
         # get depth image
         image = self.kinect.getImage(self.box, filter=False, flattenImage=self.flattenImage, saveImage=True)
 
         self.state = image
-        done = graspSuccess
+        done = True
         info = {}
 
         return self.state, reward, done, info
